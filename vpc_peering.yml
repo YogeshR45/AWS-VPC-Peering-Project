@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Two VPCs with EC2s, VPC peering, HTTP servers, and connectivity test setup."
+
+Resources:
+  EC2KeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: fresh-keypair
+      KeyType: rsa
+
+  # ---------- VPC 1 ----------
+  VPC1:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: VPC-1
+
+  VPC1IGW:
+    Type: AWS::EC2::InternetGateway
+
+  VPC1AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref VPC1IGW
+      VpcId: !Ref VPC1
+
+  VPC1Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC1
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+      - Key: Name
+        Value: VPC-1-Subnet
+
+  VPC1RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC1
+      Tags:
+      - Key: Name
+        Value: VPC-1-RT
+
+  VPC1RouteIGW:
+    Type: AWS::EC2::Route
+    DependsOn: VPC1AttachIGW
+    Properties:
+      RouteTableId: !Ref VPC1RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VPC1IGW
+
+  VPC1SubnetAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref VPC1Subnet
+      RouteTableId: !Ref VPC1RouteTable
+
+  VPC1SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH, ICMP, and HTTP
+      VpcId: !Ref VPC1
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.1.0.0/16  # VPC2 CIDR
+
+  VPC1Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0cae6d6fe6048ca2c # Replace with correct AMI for your region
+      InstanceType: t3.micro
+      KeyName: !Ref EC2KeyPair
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          SubnetId: !Ref VPC1Subnet
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref VPC1SG
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo dnf update -y
+          sudo dnf install -y httpd
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          echo "<h1>VPC 1 - Web Server</h1><p>Private IP: $(hostname -I)</p>" > /var/www/html/index.html
+      Tags:
+      - Key: Name
+        Value: VPC-1-Instance
+
+
+  # ---------- VPC 2 ----------
+  VPC2:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: VPC-2
+
+  VPC2IGW:
+    Type: AWS::EC2::InternetGateway
+
+  VPC2AttachIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref VPC2IGW
+      VpcId: !Ref VPC2
+
+  VPC2Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC2
+      CidrBlock: 10.1.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+      - Key: Name
+        Value: VPC-2-Subnet
+
+  VPC2RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC2
+      Tags:
+      - Key: Name
+        Value: VPC-2-RT
+
+  VPC2RouteIGW:
+    Type: AWS::EC2::Route
+    DependsOn: VPC2AttachIGW
+    Properties:
+      RouteTableId: !Ref VPC2RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref VPC2IGW
+
+  VPC2SubnetAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref VPC2Subnet
+      RouteTableId: !Ref VPC2RouteTable
+
+  VPC2SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH, ICMP, and HTTP
+      VpcId: !Ref VPC2
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.0.0.0/16  # VPC1 CIDR
+
+  VPC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0cae6d6fe6048ca2c # Replace with correct AMI for your region
+      InstanceType: t3.micro
+      KeyName: !Ref EC2KeyPair
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          SubnetId: !Ref VPC2Subnet
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref VPC2SG
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo dnf update -y
+          sudo dnf install -y httpd
+          sudo systemctl start httpd
+          sudo systemctl enable httpd
+          echo "<h1>VPC 2 - Web Server</h1><p>Private IP: $(hostname -I)</p>" > /var/www/html/index.html
+      Tags:
+      - Key: Name
+        Value: VPC-2-Instance
+
+  # ---------- VPC Peering ----------
+  VPCPeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !Ref VPC1
+      PeerVpcId: !Ref VPC2
+
+  VPC1PeerRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VPC1RouteTable
+      DestinationCidrBlock: 10.1.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+  VPC2PeerRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref VPC2RouteTable
+      DestinationCidrBlock: 10.0.0.0/16
+      VpcPeeringConnectionId: !Ref VPCPeeringConnection
+
+Outputs:
+  VPC1WebURL:
+    Value: !Sub "http://${VPC1Instance.PublicDnsName}"
+    Description: Access URL for VPC1 web server
+  VPC2WebURL:
+    Value: !Sub "http://${VPC2Instance.PublicDnsName}"
+    Description: Access URL for VPC2 web server
+  PeeringConnectionID:
+    Value: !Ref VPCPeeringConnection
