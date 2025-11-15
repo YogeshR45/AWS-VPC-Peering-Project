@@ -19,9 +19,8 @@
    * 5.4 [VPC Peering](#vpc-peering)
 6. [Deployment Steps](#deployment-steps)
 7. [Testing Connectivity](#testing-connectivity)
-8. [Screenshots](#screenshots)
-9. [Outputs](#outputs)
-10. [Cleanup](#cleanup)
+8. [Outputs](#outputs)
+9. [Cleanup](#cleanup)
 
 ---
 
@@ -152,12 +151,9 @@ If routing + SGs are correct, ICMP replies will return.
 
 # Screenshots
 
-```
 <img src="./screenshots/1.png" />
 <img src="./screenshots/2.png" />
 <img src="./screenshots/3.png" />
-
-```
 
 ---
 
@@ -182,6 +178,7 @@ To avoid unwanted charges:
 3. Ensure EC2 key pair is removed if no longer needed.
 
 ---
+
 
 
 
